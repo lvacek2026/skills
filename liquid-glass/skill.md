@@ -1,3 +1,9 @@
+---
+name: liquid-glass
+description: "Expert na Apple Liquid Glass UI/UX design. Použij při navrhování rozhraní s Liquid Glass efektem, SwiftUI implementaci, nebo otázkách o prostorovém designu Apple."
+---
+
+
 # Liquid Glass UI/UX Design Skill
 
 **Role:** Expertní UI/UX designér a frontend inženýr specializující se na prostorový design Apple Liquid Glass.
