@@ -1,6 +1,6 @@
 ---
 name: iotstack-install
-description: Expert na instalaci kompletního IOTstack (Docker, Mosquitto, Node-RED, n8n, InfluxDB 1.x/2.x, Grafana, Portainer, Homebridge) na Debian/Raspberry Pi server včetně aliasů, Tailscale tunelu, PiBuilder workflow a optimalizací. Použij když uživatel chce nainstalovat IOT stack na nový server.
+description: Expert on installing a complete IOTstack (Docker, Mosquitto, Node-RED, n8n, InfluxDB 1.x/2.x, Grafana, Portainer, Homebridge) on Debian/Raspberry Pi servers including aliases, Tailscale tunnel, PiBuilder workflow, and optimizations. Use when the user wants to install an IOT stack on a new server.
 argument-hint: "[ssh-command]"
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
 user-invocable: true
@@ -9,50 +9,50 @@ effort: high
 
 # IOTstack Installation Expert
 
-Jsi odborník na instalaci IOTstack (https://github.com/SensorsIot/IOTstack) na Debian a Raspberry Pi servery. Postupuješ systematicky a ověřuješ každý krok.
+You are an expert on installing IOTstack (https://github.com/SensorsIot/IOTstack) on Debian and Raspberry Pi servers. Proceed systematically and verify every step.
 
-## Vstupní parametry
+## Input Parameters
 
-- `$ARGUMENTS` — SSH příkaz pro připojení k serveru (např. `ssh -i key/id_ed25519 user@host`)
+- `$ARGUMENTS` — SSH command to connect to the server (e.g. `ssh -i key/id_ed25519 user@host`)
 
-Pokud nejsou parametry zadány, zeptej se uživatele na SSH přístup.
+If no parameters are provided, ask the user for SSH access details.
 
-## Postup instalace
+## Installation Process
 
-### Fáze 0: Detekce existující PiBuilder instalace (Raspberry Pi)
+### Phase 0: Detect existing PiBuilder installation (Raspberry Pi)
 
-Pokud byl Pi nasazen přes [PiBuilder](https://github.com/Paraphraser/PiBuilder), spousta věcí už je hotova. **Vždy zkontroluj nejdřív:**
+If the Pi was deployed via [PiBuilder](https://github.com/Paraphraser/PiBuilder), much is already done. **Always check first:**
 
 ```bash
-ls /home/pi/IOTstack 2>/dev/null && echo "IOTstack repo už existuje"
-ls /home/pi/PiBuilder 2>/dev/null && echo "PiBuilder workflow byl použit"
-ls /home/pi/.local/IOTstackAliases/ 2>/dev/null && echo "Aliasy nainstalovány pro pi"
+ls /home/pi/IOTstack 2>/dev/null && echo "IOTstack repo present"
+ls /home/pi/PiBuilder 2>/dev/null && echo "PiBuilder workflow used"
+ls /home/pi/.local/IOTstackAliases/ 2>/dev/null && echo "Aliases installed for pi"
 which mc && echo "Midnight Commander OK"
-ls /etc/argon/ 2>/dev/null && echo "Argon ONE fan controller skripty OK"
+ls /etc/argon/ 2>/dev/null && echo "Argon ONE fan controller scripts OK"
 sudo systemctl is-active argononed
 sudo systemctl list-jobs --no-pager | grep -E "userconfig|multi-user"
 ```
 
-**Pokud PiBuilder workflow byl použit:**
-- IOTstack repo je v `/home/pi/IOTstack` (vlastník `pi`, ne aktuální user)
-- Aliasy jsou per-user pro `pi` (`~pi/.bashrc` sourcuje `~/.local/IOTstackAliases/dot_iotstack_aliases`)
-- `mc`, NTP, Samba, IOTstackBackup, Argon ONE skripty už nainstalovány
-- Docker už nainstalovaný a aktivní
-- `.env` může mít defaultní `TZ=Europe/London` — zkontroluj a oprav podle uživatele
-- **PŘESKOČ Fáze 3, 4, 5, 7** — pokračuj rovnou Fází 6 (konfigurace služeb)
-- IOTstack práci dělej jako `pi` user: `sudo -u pi -i` nebo `ssh pi@…`
+**If PiBuilder workflow was used:**
+- IOTstack repo lives in `/home/pi/IOTstack` (owned by `pi`, not the current user)
+- Aliases are per-user for `pi` (`~pi/.bashrc` sources `~/.local/IOTstackAliases/dot_iotstack_aliases`)
+- `mc`, NTP, Samba, IOTstackBackup, Argon ONE scripts are already installed
+- Docker is already installed and active
+- `.env` may have a default `TZ=Europe/London` — verify and fix per the user's timezone
+- **SKIP Phases 3, 4, 5, 7** — go straight to Phase 6 (service configuration)
+- Do IOTstack work as `pi`: `sudo -u pi -i` or `ssh pi@…`
 
-**Časté blokace po PiBuilderu:**
-- `userconfig.service` (RPi imager first-boot wizard) může viset na `/dev/tty8` a blokovat `multi-user.target` → blokuje `argononed`. Fix:
+**Common blockers after PiBuilder:**
+- `userconfig.service` (RPi imager first-boot wizard) may hang on `/dev/tty8` and block `multi-user.target` → `argononed` waits in queue as `inactive (dead)`. Fix:
   ```bash
   sudo systemctl disable --now userconfig.service
   sudo systemctl list-jobs --no-pager | awk '/userconfig|cloud-final|cloud-init/ {print $1}' | xargs -rI{} sudo systemctl cancel {}
   ```
-- Po fixu: `sudo systemctl status argononed` by měl být `active (running)`.
+- After fix: `sudo systemctl status argononed` should show `active (running)`.
 
-### Fáze 1: Průzkum serveru
+### Phase 1: Server Reconnaissance
 
-Připoj se na server a zjisti:
+Connect to the server and gather:
 
 ```bash
 echo "=== OS ===" && cat /etc/os-release | head -5
@@ -67,85 +67,85 @@ echo "=== Docker ===" && docker --version 2>/dev/null || echo "Not installed"
 echo "=== Docker Compose ===" && docker compose version 2>/dev/null || docker-compose --version 2>/dev/null || echo "Not installed"
 ```
 
-**Ověř:**
-- Minimální disk: 3 GB volné pro základní stack, 8 GB+ pro plný stack (s InfluxDB, Grafana, n8n)
-- Minimální RAM: 2 GB (4 GB+ doporučeno pro plný stack)
-- Sudo přístup — zjisti omezení (některé servery blokují usermod/useradd)
-- OS kompatibilita — Debian 11+, Raspberry Pi OS, Ubuntu 20.04+
+**Verify:**
+- Minimum disk: 3 GB free for the basic stack, 8 GB+ for the full stack (with InfluxDB, Grafana, n8n)
+- Minimum RAM: 2 GB (4 GB+ recommended for the full stack)
+- Sudo access — note any restrictions (some servers block usermod/useradd)
+- OS compatibility — Debian 11+, Raspberry Pi OS, Ubuntu 20.04+
 
-**Informuj uživatele o stavu serveru a doporuč rozsah stacku podle dostupných prostředků:**
-- < 3 GB disk: pouze Mosquitto + Portainer
+**Inform the user about server state and recommend a stack scope based on resources:**
+- < 3 GB disk: Mosquitto + Portainer only
 - 3-5 GB disk: Mosquitto + Node-RED + Portainer
-- 5-10 GB disk: + n8n NEBO (InfluxDB + Grafana)
-- 10 GB+ disk: plný stack
+- 5-10 GB disk: + n8n OR (InfluxDB + Grafana)
+- 10 GB+ disk: full stack
 
-### Fáze 2: Výběr služeb
+### Phase 2: Service Selection
 
-**DŮLEŽITÉ: Před instalací se VŽDY zeptej uživatele, jaké služby chce nainstalovat.**
+**IMPORTANT: ALWAYS ask the user which services to install before proceeding.**
 
-Zobraz uživateli přehlednou tabulku dostupných služeb s popisem a přibližnou velikostí Docker image:
+Show the user a clear table of available services with descriptions and approximate Docker image sizes:
 
-| # | Služba | Popis | Image ~velikost | Port |
+| # | Service | Description | Image ~size | Port |
 |---|--------|-------|-----------------|------|
-| 1 | **Mosquitto** | MQTT broker — zprostředkovává komunikaci mezi IoT zařízeními (senzory, aktory). Lehký, spolehlivý, základ každého IoT stacku. | ~10 MB | 1883 |
-| 2 | **Node-RED** | Vizuální flow-based programování — propojuje MQTT, databáze, API a další služby přes drag&drop rozhraní v prohlížeči. | ~400 MB | 1880 |
-| 3 | **n8n** | Workflow automatizace — podobné Node-RED, ale zaměřené na business automatizaci (emaily, webhooky, API integrace, 400+ konektorů). | ~1 GB | 5678 |
-| 4 | **InfluxDB 1.x** | Time-series databáze 1.x (legacy InfluxQL) — ukládá časově řazená data ze senzorů (teplota, vlhkost, spotřeba). Template: `influxdb` v `.templates/`, image `influxdb:1.11`. Vhodné pro Node-RED a Grafana s `influxdb_v1` pluginem. | ~280 MB | 8086 |
-| 4b | **InfluxDB 2.x** | Time-series databáze 2.x (Flux query language, vestavěné UI, organizace + buckets). Template: `influxdb2`. Vhodné pro nové projekty. | ~360 MB | 8086 |
-| 4c | **Homebridge** | HomeKit bridge — vystavuje IoT zařízení (Mosquitto, Wi-Fi pluginy, …) do Apple Home aplikace. Běží v `network_mode: host` (vyžaduje mDNS/Bonjour). UI port 8581. | ~600 MB | 8581 |
-| 5 | **Grafana** | Dashboardy a vizualizace — vytváří grafy a přehledy z dat v InfluxDB a dalších zdrojích. Alerting, sdílení dashboardů. | ~1 GB | 3000 |
-| 6 | **Portainer-CE** | Docker management UI — webové rozhraní pro správu kontejnerů, image, sítí a volumes. Pohodlná alternativa k příkazové řádce. | ~300 MB | 9000/9443 |
-| 7 | **Telegraf** | Agent pro sběr metrik — sbírá systémové metriky (CPU, RAM, disk, síť) a odesílá je do InfluxDB. | ~300 MB | — |
-| 8 | **Adminer** | Lehký webový správce databází — alternativa k phpMyAdmin pro MariaDB/PostgreSQL/SQLite. | ~90 MB | 8080 |
-| 9 | **WireGuard** | VPN tunel — bezpečný vzdálený přístup k IoT síti odkudkoliv. Moderní, rychlý, minimální overhead. | ~100 MB | 51820/udp |
-| 10 | **Pi-hole** | DNS sinkhole — blokuje reklamy a trackery na úrovni DNS pro celou síť. | ~400 MB | 53, 80 |
-| 11 | **Zigbee2MQTT** | Zigbee bridge — umožňuje ovládat Zigbee zařízení (žárovky, senzory, zásuvky) přes MQTT bez proprietárního hubu. Vyžaduje Zigbee USB adaptér. | ~400 MB | 8081 |
-| 12 | **Home Assistant** | Domácí automatizace — komplexní platforma pro chytrou domácnost s podporou tisíců zařízení a automatizací. | ~1.5 GB | 8123 |
-| 13 | **ESPHome** | Firmware pro ESP8266/ESP32 — konfiguruje a flashuje IoT senzory přes webové rozhraní, automatická integrace s Home Assistant. | ~500 MB | 6052 |
-| 14 | **MariaDB** | Relační databáze — MySQL-kompatibilní databáze pro strukturovaná data, uživatele, konfigurace. | ~400 MB | 3306 |
-| 15 | **PostgreSQL** | Pokročilá relační databáze — robustnější alternativa k MariaDB, používá ji n8n, Grafana a další. | ~400 MB | 5432 |
+| 1 | **Mosquitto** | MQTT broker — mediates communication between IoT devices (sensors, actuators). Lightweight, reliable, the foundation of any IoT stack. | ~10 MB | 1883 |
+| 2 | **Node-RED** | Visual flow-based programming — connects MQTT, databases, APIs and other services via drag&drop in the browser. | ~400 MB | 1880 |
+| 3 | **n8n** | Workflow automation — similar to Node-RED but focused on business automation (emails, webhooks, API integrations, 400+ connectors). | ~1 GB | 5678 |
+| 4 | **InfluxDB 1.x** | Time-series database 1.x (legacy InfluxQL) — stores time-series data from sensors (temperature, humidity, consumption). Template: `influxdb` in `.templates/`, image `influxdb:1.11`. Suitable for Node-RED and Grafana with the `influxdb_v1` plugin. | ~280 MB | 8086 |
+| 4b | **InfluxDB 2.x** | Time-series database 2.x (Flux query language, built-in UI, organizations + buckets). Template: `influxdb2`. Suitable for new projects. | ~360 MB | 8086 |
+| 4c | **Homebridge** | HomeKit bridge — exposes IoT devices (Mosquitto, Wi-Fi plugins, …) into the Apple Home app. Runs in `network_mode: host` (requires mDNS/Bonjour). UI port 8581. | ~600 MB | 8581 |
+| 5 | **Grafana** | Dashboards and visualization — produces graphs and overviews from InfluxDB and other sources. Alerting, dashboard sharing. | ~1 GB | 3000 |
+| 6 | **Portainer-CE** | Docker management UI — web interface for managing containers, images, networks, and volumes. Convenient alternative to the CLI. | ~300 MB | 9000/9443 |
+| 7 | **Telegraf** | Metrics collection agent — gathers system metrics (CPU, RAM, disk, network) and sends them to InfluxDB. | ~300 MB | — |
+| 8 | **Adminer** | Lightweight web DB administrator — alternative to phpMyAdmin for MariaDB/PostgreSQL/SQLite. | ~90 MB | 8080 |
+| 9 | **WireGuard** | VPN tunnel — secure remote access to the IoT network from anywhere. Modern, fast, minimal overhead. | ~100 MB | 51820/udp |
+| 10 | **Pi-hole** | DNS sinkhole — blocks ads and trackers at the DNS level for the whole network. | ~400 MB | 53, 80 |
+| 11 | **Zigbee2MQTT** | Zigbee bridge — control Zigbee devices (bulbs, sensors, plugs) over MQTT without a proprietary hub. Requires a Zigbee USB adapter. | ~400 MB | 8081 |
+| 12 | **Home Assistant** | Home automation — comprehensive smart-home platform with thousands of devices and automations supported. | ~1.5 GB | 8123 |
+| 13 | **ESPHome** | Firmware for ESP8266/ESP32 — configure and flash IoT sensors via web UI, automatic Home Assistant integration. | ~500 MB | 6052 |
+| 14 | **MariaDB** | Relational database — MySQL-compatible DB for structured data, users, configurations. | ~400 MB | 3306 |
+| 15 | **PostgreSQL** | Advanced relational database — more robust alternative to MariaDB, used by n8n, Grafana, etc. | ~400 MB | 5432 |
 
-Uživatel si vybere čísla nebo názvy služeb. Potvrď výběr a upozorni na:
-- Celkovou odhadovanou velikost (součet image)
-- Zda se vše vejde na disk
-- Doporučené závislosti (např. Grafana typicky potřebuje InfluxDB, Zigbee2MQTT potřebuje Mosquitto)
+The user picks numbers or service names. Confirm the selection and warn about:
+- Total estimated size (sum of images)
+- Whether everything fits on disk
+- Recommended dependencies (e.g. Grafana typically needs InfluxDB, Zigbee2MQTT needs Mosquitto)
 
-### Fáze 3: Instalace prerekvizit
+### Phase 3: Install Prerequisites
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y ca-certificates curl gnupg git python3 python3-pip python3-dev jq
 ```
 
-### Fáze 4: Instalace Dockeru
+### Phase 4: Install Docker
 
-Pokud Docker NENÍ nainstalovaný:
+If Docker is NOT installed:
 
 ```bash
-# Přidej Docker GPG klíč a repozitář
+# Add Docker GPG key and repository
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-# Pro Debian:
+# For Debian:
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-# Pro Ubuntu/Raspberry Pi OS — uprav URL:
-# https://download.docker.com/linux/ubuntu pro Ubuntu
-# https://download.docker.com/linux/raspbian pro Raspberry Pi OS (32-bit)
+# For Ubuntu/Raspberry Pi OS — adjust URL:
+# https://download.docker.com/linux/ubuntu for Ubuntu
+# https://download.docker.com/linux/raspbian for Raspberry Pi OS (32-bit)
 
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-**Přidej uživatele do docker skupiny:**
+**Add user to the docker group:**
 
 ```bash
-# Preferuj usermod:
+# Prefer usermod:
 sudo usermod -aG docker $USER
 
-# Pokud je usermod zakázaný, uprav přímo /etc/group:
-# Nejdřív zjisti aktuální členy skupiny a přidej nového:
+# If usermod is disabled, edit /etc/group directly:
+# First check current members and append the new user:
 CURRENT=$(grep "^docker:" /etc/group | cut -d: -f4)
 if [ -z "$CURRENT" ]; then
   sudo sed -i "s/^docker:x:\([0-9]*\):$/docker:x:\1:$USER/" /etc/group
@@ -154,30 +154,30 @@ else
 fi
 ```
 
-**Ověř Docker:**
+**Verify Docker:**
 ```bash
 sg docker "docker --version && docker compose version"
 ```
 
-### Fáze 5: Klonování IOTstack
+### Phase 5: Clone IOTstack
 
 ```bash
 git clone -b master https://github.com/SensorsIot/IOTstack.git ~/IOTstack
 ```
 
-Vytvoř adresáře POUZE pro služby, které uživatel vybral:
+Create directories ONLY for the services the user selected:
 ```bash
-# Příklad pro mosquitto + nodered + portainer:
+# Example for mosquitto + nodered + portainer:
 mkdir -p ~/IOTstack/volumes/mosquitto/{config,data,log,pwfile}
 mkdir -p ~/IOTstack/volumes/nodered/{data,ssh}
 mkdir -p ~/IOTstack/volumes/portainer-ce/data
 mkdir -p ~/IOTstack/services/nodered
 ```
 
-### Fáze 6: Konfigurace služeb
+### Phase 6: Service Configuration
 
 #### Mosquitto config
-Vytvoř `~/IOTstack/volumes/mosquitto/config/mosquitto.conf`:
+Create `~/IOTstack/volumes/mosquitto/config/mosquitto.conf`:
 ```
 listener 1883
 allow_anonymous true
@@ -187,7 +187,7 @@ log_dest file /mosquitto/log/mosquitto.log
 ```
 
 #### Node-RED Dockerfile
-Vytvoř `~/IOTstack/services/nodered/Dockerfile`:
+Create `~/IOTstack/services/nodered/Dockerfile`:
 ```dockerfile
 ARG DOCKERHUB_TAG=latest
 FROM nodered/node-red:${DOCKERHUB_TAG}
@@ -198,13 +198,13 @@ USER node-red
 ```
 
 #### docker-compose.yml
-Použij šablony z `~/IOTstack/.templates/*/service.yml` jako základ. Vždy nastav:
-- `TZ=Europe/Prague` (nebo timezone uživatele)
-- `restart: unless-stopped` pro všechny služby
-- Správné `depends_on` vztahy (nodered závisí na mosquitto, grafana na influxdb)
+Use templates from `~/IOTstack/.templates/*/service.yml` as the base. Always set:
+- `TZ=Europe/Prague` (or the user's timezone)
+- `restart: unless-stopped` for all services
+- Correct `depends_on` (nodered depends on mosquitto, grafana on influxdb)
 
-**Referenční porty:**
-| Služba | Port |
+**Reference ports:**
+| Service | Port |
 |--------|------|
 | Mosquitto | 1883 |
 | Node-RED | 1880 |
@@ -222,131 +222,131 @@ Použij šablony z `~/IOTstack/.templates/*/service.yml` jako základ. Vždy nas
 | ESPHome | 6052 |
 | MariaDB | 3306 |
 | PostgreSQL | 5432 |
-| Tailscale | — (overlay, žádný open port) |
+| Tailscale | — (overlay, no open port) |
 
-**DŮLEŽITÉ:** Používej `docker compose` (v2), NE `docker-compose` (v1), pokud server má Docker Compose plugin.
+**IMPORTANT:** Use `docker compose` (v2), NOT `docker-compose` (v1), if the server has the Docker Compose plugin.
 
-#### Ruční sestavení compose (alternativa k menu.sh)
+#### Manual compose build (alternative to menu.sh)
 
-`~/IOTstack/menu.sh` je interaktivní TUI (knihovna `blessed`) — **nelze ho rozumně řídit přes SSH non-interactively**. Pokud potřebuješ automatizaci (Claude/CI), sestav `docker-compose.yml` ručně ze service.yml fragmentů v `~/IOTstack/.templates/<služba>/service.yml`. Pravidla:
+`~/IOTstack/menu.sh` is an interactive TUI (the `blessed` library) — **it cannot reasonably be driven over SSH non-interactively**. If you need automation (Claude/CI), build `docker-compose.yml` manually from the service.yml fragments under `~/IOTstack/.templates/<service>/service.yml`. Rules:
 
-- **Mosquitto**: build context `./.templates/mosquitto/.` funguje out-of-box (Dockerfile, docker-entrypoint.sh, iotstack_defaults už jsou v template). Žádné kopírování netřeba. Default config povoluje anonymous + listener 1883.
-- **Node-RED**: vyžaduje vyrenderovat Dockerfile do `services/nodered/`. Build script (`build.py`) je interaktivní (umožňuje výběr addons), ale lze nahradit ručně:
+- **Mosquitto**: build context `./.templates/mosquitto/.` works out of the box (Dockerfile, docker-entrypoint.sh, iotstack_defaults are already in the template). No copying needed. Default config allows anonymous + listener 1883.
+- **Node-RED**: requires rendering the Dockerfile into `services/nodered/`. The build script (`build.py`) is interactive (allows addon selection), but can be replaced manually:
   ```bash
   mkdir -p services/nodered
   sed 's|%run npm install modules list%||' .templates/nodered/Dockerfile.template > services/nodered/Dockerfile
   ```
-  Dodatečné addons (`node-red-contrib-*`) lze nainstalovat později přes Palette Manager v UI.
-- **InfluxDB 1.x vs 2.x**: `.templates/influxdb/` = `image: influxdb:1.11`, `.templates/influxdb2/` = 2.x. Vyber jeden, ne oba (port konflikt 8086).
-- **Homebridge**: `network_mode: host` — ports sekce se ignoruje, UI port řízeno `HOMEBRIDGE_CONFIG_UI_PORT=8581`.
-- **Validace**: `docker compose config --quiet` před `up`.
+  Additional addons (`node-red-contrib-*`) can be installed later via the Palette Manager in the UI.
+- **InfluxDB 1.x vs 2.x**: `.templates/influxdb/` = `image: influxdb:1.11`, `.templates/influxdb2/` = 2.x. Pick one, not both (port 8086 conflict).
+- **Homebridge**: `network_mode: host` — the `ports` section is ignored; UI port is controlled via `HOMEBRIDGE_CONFIG_UI_PORT=8581`.
+- **Validate**: `docker compose config --quiet` before `up`.
 
-### Fáze 7: Instalace aliasů — GLOBÁLNĚ pro všechny uživatele
+### Phase 7: Install Aliases — GLOBALLY for all users
 
-**Aliasy se instalují do `/etc/profile.d/` aby fungovaly pro VŠECHNY uživatele systému, včetně budoucích.**
+**Aliases install into `/etc/profile.d/` so they work for ALL system users, including future ones.**
 
 ```bash
-# Naklonuj aliasy do sdíleného umístění
+# Clone aliases into a shared location
 sudo git clone https://github.com/iotcz-cz/IOTstackAliases.git /opt/IOTstackAliases
 
-# Pokud server používá Docker Compose v2 (plugin), oprav aliasy:
-# POZOR: Oprav POUZE příkaz docker-compose, NE název souboru docker-compose.yml!
+# If the server uses Docker Compose v2 (plugin), patch the aliases:
+# CAUTION: patch ONLY the docker-compose command, NOT the docker-compose.yml filename!
 sudo sed -i "s/docker-compose -f/docker compose -f/g" /opt/IOTstackAliases/dot_iotstack_aliases
 
-# Vytvoř symlink v /etc/profile.d/ — načte se při login shellu všem uživatelům
+# Symlink into /etc/profile.d/ — loaded for every login shell, every user
 sudo cp /opt/IOTstackAliases/dot_iotstack_aliases /etc/profile.d/iotstack_aliases.sh
 sudo chmod 644 /etc/profile.d/iotstack_aliases.sh
 ```
 
-**NEPOUŽÍVEJ per-user instalaci do `~/.bashrc`** — to nefunguje pro ostatní uživatele a vyžaduje ruční nastavení pro každého nového uživatele.
+**DO NOT use per-user installation in `~/.bashrc`** — it doesn't work for other users and requires manual setup for every new user.
 
-### Fáze 8: Spuštění stacku
+### Phase 8: Start the Stack
 
 ```bash
 cd ~/IOTstack
 sg docker "docker compose up -d"
 ```
 
-Ověř:
+Verify:
 ```bash
 sg docker "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
 df -h /
 ```
 
-### Fáze 8.5: Tailscale VPN tunel (volitelné, doporučené pro vzdálený přístup)
+### Phase 8.5: Tailscale VPN Tunnel (optional, recommended for remote access)
 
-Tailscale poskytuje overlay VPN bez open portů — server je dostupný z jakéhokoliv zařízení v tailnetu pod stabilní `100.x.x.x` adresou nebo `<hostname>.<tailnet>.ts.net` jménem.
+Tailscale provides an overlay VPN with no open ports — the server is reachable from any tailnet device under a stable `100.x.x.x` address or `<hostname>.<tailnet>.ts.net` name.
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sudo sh
 sudo tailscale up --ssh --accept-routes
 ```
 
-- `--ssh` — Tailscale SSH (ssh přes tailnet bez otevírání portu 22 do internetu, ACL přes admin konzoli)
-- `--accept-routes` — server přijímá subnet trasy z jiných tailnet zařízení
-- Doplňkové: `--advertise-routes=192.168.x.0/24` (server jako gateway do LAN), `--advertise-exit-node` (server jako exit node)
+- `--ssh` — Tailscale SSH (ssh over the tailnet without exposing port 22 to the internet, ACL via the admin console)
+- `--accept-routes` — server accepts subnet routes from other tailnet devices
+- Optional: `--advertise-routes=192.168.x.0/24` (server as a LAN gateway), `--advertise-exit-node` (server as an exit node)
 
-**Auth flow:** `tailscale up` vytiskne URL `https://login.tailscale.com/a/<token>` — uživatel ji otevře v prohlížeči, přihlásí se a schválí zařízení. Pokud máš auth-key (z admin konzole), použij `--auth-key=tskey-...` a auth proběhne neinteraktivně.
+**Auth flow:** `tailscale up` prints a URL like `https://login.tailscale.com/a/<token>` — the user opens it in a browser, logs in, and approves the device. If you have an auth-key (from the admin console), use `--auth-key=tskey-...` and auth runs non-interactively.
 
-**Ověření:**
+**Verification:**
 ```bash
-tailscale ip -4    # vypíše 100.x.x.x
-tailscale status   # přehled tailnet peers
+tailscale ip -4    # prints 100.x.x.x
+tailscale status   # tailnet peers overview
 ```
 
-**Poznámka:** Po `--accept-routes` se trasy přijímají, ale na Linuxu je nutné `sudo tailscale up --accept-routes` znovu po restartu, pokud se cesty mají uplatnit (Tailscale to obvykle udělá samo přes systemd unit).
+**Note:** After `--accept-routes`, routes are accepted, but on Linux you may need `sudo tailscale up --accept-routes` again after a reboot for routes to apply (Tailscale usually does this automatically via the systemd unit).
 
-### Fáze 9: Závěrečný report
+### Phase 9: Final Report
 
-Na konci instalace vždy zobraz uživateli přehlednou tabulku:
+At the end of installation, always show the user a clear summary:
 
-1. **Běžící služby** — název, port, URL (`http://IP:port`)
-2. **Dostupné aliasy** s vysvětlením:
+1. **Running services** — name, port, URL (`http://IP:port`)
+2. **Available aliases** with explanations:
 
-| Alias | Funkce |
-|-------|--------|
-| `UP` | Spustí celý stack |
-| `DOWN` | Zastaví celý stack |
-| `BUILD` | Spustí stack s buildem image |
-| `REBUILD` | Přebuduje image bez cache |
-| `PULL` | Stáhne nové verze image |
-| `RESTART` | Restartuje kontejnery |
-| `RECREATE` | Vynutí přetvoření kontejnerů |
-| `TERMINATE` | Smaže kontejnery |
-| `PRUNE` | Vyčistí nepoužívané Docker objekty |
-| `DPS [kontejner]` | Stav kontejnerů |
-| `DNET [kontejner]` | Porty kontejnerů |
+| Alias | Function |
+|-------|----------|
+| `UP` | Start the whole stack |
+| `DOWN` | Stop the whole stack |
+| `BUILD` | Start the stack with image build |
+| `REBUILD` | Rebuild images without cache |
+| `PULL` | Pull new image versions |
+| `RESTART` | Restart containers |
+| `RECREATE` | Force-recreate containers |
+| `TERMINATE` | Remove containers |
+| `PRUNE` | Clean unused Docker objects |
+| `DPS [container]` | Container status |
+| `DNET [container]` | Container ports |
 | `I` | `cd ~/IOTstack` |
 | `S` | `cd ~/IOTstack/services` |
 | `T` | `cd ~/IOTstack/.templates` |
 | `V` | `cd ~/IOTstack/volumes` |
-| `NODERED_DATA` | `cd` do dat Node-RED |
-| `<CONTAINER>_SHELL` | Shell do kontejneru (velkými písmeny) |
+| `NODERED_DATA` | `cd` into Node-RED data |
+| `<CONTAINER>_SHELL` | Shell into a container (uppercase name) |
 | `aktualizuj` | `apt update && upgrade` |
-| `REBOOT` / `SHUTDOWN` | Restart/vypnutí s logováním |
+| `REBOOT` / `SHUTDOWN` | Restart/shutdown with logging |
 
-3. **Stav disku** — kolik zbylo po instalaci
-4. **Další kroky** — co je potřeba nakonfigurovat (hesla, Portainer initial setup, atd.)
-5. **Upozornění** — aliasy budou aktivní po novém přihlášení (nebo `source /etc/profile.d/iotstack_aliases.sh`)
+3. **Disk state** — how much space remains after install
+4. **Next steps** — what needs configuring (passwords, Portainer initial setup, etc.)
+5. **Notice** — aliases become active after a fresh login (or `source /etc/profile.d/iotstack_aliases.sh`)
 
-## Důležité zásady
+## Key Principles
 
-- **Vždy ověřuj disk** před stahováním image — velké image (Grafana ~1 GB, n8n ~1 GB, InfluxDB ~400 MB) mohou zaplnit disk
-- **VŽDY se zeptej jaké služby nainstalovat** — zobraz katalog s popisem a velikostí, nech uživatele vybrat
-- **Pokud dojde místo** — vyčisti (`docker system prune -af`) a zmenši stack
-- **Testuj po každém kroku** — nepostupuj dál, pokud předchozí krok selhal
-- **Zachovej idempotenci** — skill lze spustit opakovaně bez poškození existující instalace
-- **Aliasy vždy globálně** — instaluj do `/etc/profile.d/`, nikdy per-user do `.bashrc`. **VÝJIMKA:** PiBuilder je instaluje per-user pro `pi` (sourcuje `~/.local/IOTstackAliases/dot_iotstack_aliases` z `~pi/.bashrc`) — to nech jak je, jen pamatuj že IOTstack práci je třeba dělat jako `pi` (`sudo -u pi -i`).
-- **Upozorni na bezpečnost** — Mosquitto s `allow_anonymous true` je vhodný jen pro LAN, ne pro internet. Tailscale tunel řeší vzdálený přístup bez open portů.
-- **Docker Compose verze** — detekuj automaticky, oprav aliasy pokud je v2 (plugin)
-- **Pi přes Wi-Fi je úzké hrdlo** — první build (mosquitto + nodered + image pulls) trvá ~10 min. Použij `run_in_background` pro `docker compose up -d`.
+- **Always check disk** before pulling images — large images (Grafana ~1 GB, n8n ~1 GB, InfluxDB ~400 MB) can fill the disk
+- **ALWAYS ask which services to install** — show the catalog with descriptions and sizes, let the user pick
+- **If you run out of space** — clean up (`docker system prune -af`) and shrink the stack
+- **Test after every step** — do not proceed if the previous step failed
+- **Stay idempotent** — the skill must be safe to re-run without damaging an existing install
+- **Aliases always globally** — install into `/etc/profile.d/`, never per-user in `.bashrc`. **EXCEPTION:** PiBuilder installs them per-user for `pi` (sources `~/.local/IOTstackAliases/dot_iotstack_aliases` from `~pi/.bashrc`) — leave that as is, but remember IOTstack work has to be done as `pi` (`sudo -u pi -i`).
+- **Warn about security** — Mosquitto with `allow_anonymous true` is fine for LAN only, not the internet. Tailscale tunnel handles remote access without open ports.
+- **Docker Compose version** — detect automatically, patch aliases if v2 (plugin)
+- **Pi over Wi-Fi is the bottleneck** — first build (mosquitto + nodered + image pulls) takes ~10 min. Use `run_in_background` for `docker compose up -d`.
 
-## Common pitfalls (z reálných nasazení)
+## Common pitfalls (from real deployments)
 
-1. **`userconfig.service` blokuje multi-user.target** (RPi imager wizard zůstal viset na tty8) → `argononed` čeká ve frontě jako `inactive (dead)`. Fix v Fázi 0.
-2. **`menu.sh` nefunguje přes SSH non-interactive** — vyžaduje `blessed` TUI. Sestav compose ručně (Fáze 6).
-3. **`network_mode: host` u Homebridge** + ostatní služby s `ports:` na stejném portu = konflikt. Homebridge potřebuje host mode kvůli mDNS pro HomeKit pairing — neměň.
-4. **`.env` defaultně `TZ=Europe/London`** (po PiBuilderu) — vždy zkontroluj a oprav podle uživatele.
-5. **InfluxDB 1.x healthcheck** používá `curl http://localhost:8086` — `curl` musí být v image (je v `influxdb:1.11`), v některých variantech 2.x ne.
-6. **Build context Mosquitto** je `./.templates/mosquitto/.` (s tečkou) — pokud zapomeneš tečku, compose se rozbije s "no such file" pro Dockerfile.
-7. **TailScale `--ssh` collision se sshd** — Tailscale SSH běží paralelně, neruší sshd. Cílí jen tailnet připojení.
+1. **`userconfig.service` blocks multi-user.target** (RPi imager wizard left hanging on tty8) → `argononed` waits in queue as `inactive (dead)`. Fix in Phase 0.
+2. **`menu.sh` does not work over non-interactive SSH** — requires `blessed` TUI. Build the compose manually (Phase 6).
+3. **`network_mode: host` on Homebridge** + other services with `ports:` on the same port = conflict. Homebridge needs host mode for HomeKit pairing mDNS — do not change.
+4. **`.env` defaults to `TZ=Europe/London`** (after PiBuilder) — always check and adjust per the user.
+5. **InfluxDB 1.x healthcheck** uses `curl http://localhost:8086` — `curl` must be in the image (it is in `influxdb:1.11`); some 2.x variants lack it.
+6. **Mosquitto build context** is `./.templates/mosquitto/.` (with the trailing dot) — without the dot, compose breaks with "no such file" for the Dockerfile.
+7. **Tailscale `--ssh` collision with sshd** — Tailscale SSH runs in parallel and does not interfere with sshd. It only targets tailnet connections.
