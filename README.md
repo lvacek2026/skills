@@ -20,6 +20,7 @@ The `-g` flag installs the skill globally (available across all projects).
 | [homey-node-red](./homey-node-red/) | Homey API & Node-RED integrace – ovládání klimatizace a IoT zařízení | `npx skills add https://github.com/lvacek2026/skills --skill homey-node-red -g` |
 | [iot-dehumidification](./iot-dehumidification/) | Expertní řízení vysoušení přes IoT s vazbou na FVE predikci | `npx skills add https://github.com/lvacek2026/skills --skill iot-dehumidification -g` |
 | [n8n-slack-expert](./n8n-slack-expert/) | Stabilní integrace n8n + Slack – timeouty, idempotence, routing | `npx skills add https://github.com/lvacek2026/skills --skill n8n-slack-expert -g` |
+| [grafana-energy-viz](./grafana-energy-viz/) | Návrh energetických dashboardů v Grafaně – Canvas Panel, Sankey, Solar Flow, animace toků (Tesla/Victron styl bez Enterprise) | `npx skills add https://github.com/lvacek2026/skills --skill grafana-energy-viz -g` |
 
 ## Repository Structure
 
@@ -42,7 +43,9 @@ skills/
 ├── iot-dehumidification/
 │   ├── SKILL.md
 │   └── README.md
-└── n8n-slack-expert/
-    ├── SKILL.md
-    └── README.md
+├── n8n-slack-expert/
+│   ├── SKILL.md
+│   └── README.md
+└── grafana-energy-viz/
+    └── SKILL.md
 ```
