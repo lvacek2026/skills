@@ -1,0 +1,35 @@
+# CODEOWNERS — viz https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# Vždy enforce přes branch protection: "Require review from Code Owners"
+
+# ───────────────────────────────────────────────────────────────────────
+#  IaC repo (net-infra-iac)
+# ───────────────────────────────────────────────────────────────────────
+
+# Globální fallback — admini sítě
+*                       @network-admins
+
+# Oxidized config a router.db smí měnit jen NetOps
+/infrastructure/oxidized/   @netops-team
+
+# n8n workflows smí měnit jen automation team
+/infrastructure/n8n/        @automation-team
+
+# Docker compose / Caddy patří DevOps
+/infrastructure/docker-compose.yml      @devops-team
+/infrastructure/caddy/                  @devops-team
+
+# Docs může editovat kdokoliv ze síťového týmu
+/docs/                  @network-admins @netops-team
+
+# Switch prep playbooky — domain expert na vendor
+/infrastructure/switch-prep/Huawei*     @huawei-experts
+/infrastructure/switch-prep/Cisco*      @cisco-experts
+
+
+# ───────────────────────────────────────────────────────────────────────
+#  Backup repo (net-config-backups) — granulární per-site
+# ───────────────────────────────────────────────────────────────────────
+
+# /sites/praha/      @praha-ops
+# /sites/brno/       @brno-ops
+# /sites/ostrava/    @ostrava-ops

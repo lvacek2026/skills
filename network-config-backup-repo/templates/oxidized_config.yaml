@@ -1,0 +1,70 @@
+# Oxidized config — split-repo + githubrepo hook
+# Místo: /home/oxidized/.config/oxidized/config (v containeru)
+# Vendor-specific poznámky pro Huawei VRP viz docs/prep-commands/huawei-vrp.md
+
+username: oxidized-bot
+password: ""                    # SSH key auth, ne heslo
+model: vrp                      # výchozí model; přepisuje se per-device v router.db
+interval: 86400                 # 24h
+use_max_threads: 5
+timeout: 60
+retries: 2
+log: /home/oxidized/.config/oxidized/oxidized.log
+debug: false
+
+input:
+  default: ssh
+  ssh:
+    secure: false                                # legacy KEX/cipher pro staré VRP
+  utils:
+    ssh_kex: diffie-hellman-group14-sha1
+    ssh_ciphers: aes256-cbc
+    ssh_keys: ~/.ssh/n8n-backup
+    ssh_host_key: +ssh-rsa
+
+output:
+  default: git
+  git:
+    user: oxidized-bot
+    email: oxidized@example.com
+    repo: /data/net-config-backups.git           # bare repo lokálně v containeru
+    single_repo: true                            # všechny groups do jednoho repa
+    subdirectories: true                         # hierarchie /sites/<site>/<hostname>
+
+source:
+  default: csv
+  csv:
+    file: /home/oxidized/.config/oxidized/router.db
+    delimiter: !ruby/regexp /:/
+    map:
+      name: 0
+      ip: 1
+      model: 2
+      username: 3
+      group: 4                                   # podpora hierarchie
+
+vars:
+  enable: ""                                     # ne-Cisco zařízení nepotřebují
+
+groups:
+  praha:
+    vars:
+      ssh_keys: ~/.ssh/n8n-backup
+  brno:
+    vars:
+      ssh_keys: ~/.ssh/n8n-backup
+
+# REST API pro n8n trigger (POST /node/next/<name>)
+rest: 0.0.0.0:8888
+
+hooks:
+  github_push:
+    type: githubrepo
+    events: [post_store]
+    remote_repo: git@github.com:org/net-config-backups.git
+    publickey: /home/oxidized/.ssh/id_ed25519.pub
+    privatekey: /home/oxidized/.ssh/id_ed25519
+    # POZOR: Oxidized vyžaduje legacy PEM formát privátního klíče
+    # (převod: ssh-keygen -p -m PEM -f id_ed25519)
+    # Default branch je 'master' — pro push do 'main' přidej:
+    #   remote_branch: main

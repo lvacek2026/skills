@@ -1,0 +1,43 @@
+# Oxidized runtime
+*.pid
+*.log
+*.log.*
+oxidized.log
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# n8n persistent state
+.n8n/
+n8n_data/
+
+# Caddy dynamic certs and ACME state
+data/caddy/
+
+# SSH klíče — NIKDY do gitu
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.pem
+*.key
+authorized_keys
+known_hosts
+
+# Secrets / credentials
+.env
+.env.local
+.env.*.local
+*credentials*
+*-secrets.*
+.oxidized-web-credentials
+
+# Docker compose overrides s lokálními secrety
+docker-compose.override.yml
