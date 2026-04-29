@@ -175,7 +175,121 @@ quit
 
 (první `quit` z `config` mode, druhý ukončí terminálovou relaci).
 
-## 6. Technické limity pro skripty
+## 6. Onboarding nového uživatele a SSH RSA klíče
+
+### Krok 6.1 — Import RSA peer-public-key
+
+V `MA5683T(config)#` (R015) nebo `MA5603T(config)#` (R018):
+
+```
+rsa peer-public-key <KEY_NAME>
+public-key-code begin
+<PKCS#1 hex wrapped na 64 znaků, 9 řádků pro 2048-bit klíč>
+public-key-code end
+peer-public-key end
+display rsa peer-public-key brief
+```
+
+**Pravidla pro klíč:**
+- VRP/MA56xx přijímá **PKCS#1 raw** (`SEQUENCE { modulus, publicExponent }`),
+  začíná `3082010a` (2048-bit). NE X.509 (`30820122`).
+- Maximum **2048-bit** (4096 nezvládá).
+- Wrap na **64 znaků** per řádek (CLI buffer ~520).
+- Konverze z OpenSSH `.pub` na PKCS#1 hex:
+  ```bash
+  ssh-keygen -e -m PKCS8 -f key.pub > k.pem
+  openssl rsa -pubin -in k.pem -RSAPublicKey_out -outform DER \
+    | od -An -tx1 | tr -d ' \n' | fold -w 64
+  ```
+- MA5603T R018 (a MA5683T R015) ukládají interně bez leading 0x00 — `display rsa peer-public-key name X` ukazuje `30820109` místo `3082010a`. To je OK, klíč funguje.
+
+### Krok 6.2 — Vytvoření CLI uživatele (interaktivní wizard)
+
+V privilege mode (`MA5683T#` / `MA5603T#`):
+
+```
+terminal user name
+```
+
+Wizard se postupně ptá (ověřeno na R018 V800R018C10, MA5603T):
+
+| Prompt | Odpověď |
+|---|---|
+| `User Name(length<6,15>)` | `n8n_backup` (6-15 chars) |
+| `User Password(length<6,15>)` | silné heslo, **6-15 chars max** |
+| `Confirm Password(length<6,15>)` | znovu heslo |
+| `User profile name(<=15 chars)[root]` | ENTER (default `root`) |
+| `User's Level: 1. Common User 2. Operator` | `1` (Common User stačí pro read-only) |
+| `Permitted Reenter Number(0--20)` | `5` (max současných session) |
+| `User's Appended Info(<=30 chars)` | ENTER (volitelný popis) |
+| `Adding user successfully. Repeat? (y/n)[n]` | `n` (nebo `y` pro dalšího user) |
+
+R015 wizard je podobný, ale může mít jiné pořadí promptů.
+
+### Krok 6.3 — Mapping SSH user na RSA klíč
+
+V config view:
+
+```
+ssh user <USER> authentication-type <TYPE>
+ssh user <USER> assign rsa-key <KEY_NAME>
+```
+
+Auth-type možnosti (R018):
+- `rsa` — pouze RSA klíč (production)
+- `password` — pouze heslo
+- `password-publickey` — OBOJÍ (heslo I klíč musí prošlo)
+- `all` — heslo NEBO RSA (víc tolerantní pro debugging)
+
+**Pozn.:** Hláška "Authentication type is set, and will be in effect next time" znamená že nastavení se aplikuje na **další** session.
+
+### Krok 6.4 — Save
+
+```
+save
+```
+
+Auto-save může běžet (viz `display autosave`), ale manual save zajistí persistence okamžitě. Save vyžaduje pár sekund (zapisuje na obě SCUN karty).
+
+### Známý problém — Oxidized + net-ssh padding error (R018)
+
+Při použití **Ruby net-ssh** (Oxidized 0.36.0) proti MA5603T V800R018C10:
+
+```
+Net::SSH::Exception: padding error, need <random_huge_number> block 16
+```
+
+Příčina: net-ssh decryption inkompatibilita s SSH stack na R018. **OpenSSH klient z téhož hostu se stejným klíčem funguje** (`Authenticated using publickey`). Není to problem klíče ani konfigurace OLT.
+
+Test že problém je na klient straně:
+```bash
+docker exec -u oxidized oxidized ssh -i /home/oxidized/.ssh/key \
+  -o KexAlgorithms=diffie-hellman-group14-sha1 \
+  -o Ciphers=aes256-ctr -o HostKeyAlgorithms=ssh-rsa \
+  -o PubkeyAcceptedAlgorithms=ssh-rsa \
+  -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+  user@OLT_IP
+# → "Authenticated using publickey" = SSH server OK, problém v Oxidized net-ssh
+```
+
+Workarounds:
+1. **Per-node SSH options** v Oxidized (cipher/MAC override pro tento OLT, group config)
+2. **Upgrade Oxidized** na novější verzi (sledovat changelog na opravy net-ssh)
+3. **External SSH wrapper** — Oxidized custom input plugin volající `ssh` CLI místo net-ssh
+4. Akceptovat failure dokud nevyřešeno (workaround #1 je nejbližší k vyzkoušení)
+
+### Připojení s jinými blokujícími faktory
+
+Pokud SSH connection padá s `Connection reset by peer` (nikoli auth fail):
+
+- Zkontroluj `display sysman ip-refuse ssh` — refuse ACL?
+- Zkontroluj `display sysman ip-access ssh` — allow-list ACL? (prázdný = všechno povolené)
+- Zkontroluj `display sysman firewall ssh` — firewall enabled?
+- Zkontroluj `display ssh server session` — počet aktivních session (limit 22 globálně, per-user dle `Permitted Reenter Number`)
+
+R018 má interní anti-bruteforce mechanismus (po opakovaných failed auth z téhož source IP může TCP-resetovat nové connecty), ale display příkaz pro něj nezná. Cooldown 10-30 min.
+
+## 7. Technické limity pro skripty
 
 - **Oprávnění:** všechny konfigurační operace vyžadují uživatele s
   `Privilege Level 3` (administrator). Pro pouhý read-only monitoring
