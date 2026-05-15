@@ -2,6 +2,17 @@
 
 Vše, co tě v API dokumentaci přejde dvakrát. Tahle věci jsou v `freelo-api.yaml` v sekcích `Behavior notes (non-obvious)` jednotlivých endpointů — sumarizováno tady.
 
+## 0. n8n 2.x integrace — draft vs published, SQLite WAL
+
+Když Freelo nody v n8n workflow nereagují (workflow běží, ale konkrétní node se tiše neprovede):
+
+- **n8n 2.x rozděluje workflow na "draft" a "published"** — `workflow_entity.versionId` = draft, `activeVersionId` = published. Runtime používá published, ne draft. `import:workflow` přidá nodes do drafta a deaktivuje workflow.
+- **Správně:** `n8n publish:workflow --id=<id> --versionId=<new_version_id>` + restart kontejneru. V logu hledej `Processed N draft workflows, M published workflows.` — `M=0` znamená, že nic není reálně nasazeno.
+- **Nikdy nepatchuj SQLite DB přímo** (`database.sqlite`) bez správného handle WAL souborů — patche se ztratí (přepsány z WAL) a po pár pokusech se DB **zkorumpuje** (`database disk image is malformed`).
+- Před debugem v CLI: vždy nejdříve **n8n UI → Executions → klikni na běh → najdi červené nody**. Z UI rovnou vidíš error message; z CLI ne.
+
+Detail v `recipes.md` → "n8n workflow — řetězení Freelo nodů".
+
 ## 1. Timestampy — DVA různé formáty (REST × webhook)
 
 ### REST API (request + response)

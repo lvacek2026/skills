@@ -391,12 +391,73 @@ def bulk_import(csv_path, project_id, tasklist_id):
 Freelo má oficiální Make app. `worker_id` v task editu je tichý alias na `worker` (přidaný kvůli kompatibilitě s Make).
 
 ### n8n
-HTTP Request node:
-- Auth: Basic Auth (email + API key)
-- Header: `User-Agent: Your_App_Id (your@email)`
-- Body: JSON
+
+HTTP Request node basics:
+- Authentication: **Generic Credential Type → Basic Auth** (uložené credentials s `email` + API key)
+- Header: `User-Agent: Your_App_Id (your@email)` — povinné, ale n8n často projde s defaultním axios UA
+- Body: JSON, `Content-Type: application/json`
+- Pro `POST /task/{id}` (edit) musí být `worker` typu integer (nikoli string). `worker_id` funguje jako alias.
 
 Pro webhook trigger v n8n stačí jakýkoli Webhook node — Freelo POST na něj a parsuj envelope. Dedup pamatuj v separátním uzlu (např. Redis nebo file storage).
+
+#### n8n workflow — řetězení Freelo nodů
+
+Když potřebuješ ID hlavního tasku v pozdějším nodu (např. `Najít` → `Získat podúkoly` → `Odškrtnout` → `Přiřadit nového řešitele`), použij **Set node "Uložit Task ID"** hned po `Najít`. Pak na něj odkazuj přes `$('Uložit Task ID').first().json.mainTaskId`. Reference přes několik HTTP nodů (`$('Najít').item.json...`) občas selhává tiše po výměně credentials nebo formátu odpovědi.
+
+```json
+// Set node "Uložit Task ID"
+{
+  "assignments": [
+    {"name": "mainTaskId", "value": "={{ $json.data.tasks.find(t => t.name.toLowerCase().includes('zaúčtovat')).id }}", "type": "number"}
+  ]
+}
+
+// Pozdější HTTP node URL
+"={{ 'https://api.freelo.io/v1/task/' + $('Uložit Task ID').first().json.mainTaskId }}"
+```
+
+#### n8n 2.x — kritická gotcha: draft vs published
+
+n8n 2.x má **dvě úrovně workflow** — `versionId` (draft, co edituješ) a `activeVersionId` (published, co reálně běží). Při CLI úpravách:
+
+- `n8n import:workflow --input=wf.json` **deaktivuje** workflow ("Remember to activate later").
+- `n8n update:workflow --active=true` je **deprecated** a nestačí — workflow je v DB `active=1`, ale runtime používá staré published version, **nikoli** nově importované nody.
+- Správný postup: `n8n publish:workflow --id=<id> --versionId=<new_version_id>` + restart kontejneru.
+- Kontroluj log: `Processed N draft workflows, M published workflows.` — pokud `M=0`, žádný workflow se skutečně nespouští, jen jsou registrované triggery na **staré** verzi.
+
+#### NEMANIPULUJ s SQLite DB přímo
+
+n8n 2.x používá **SQLite v WAL módu** (`database.sqlite` + `database.sqlite-wal` + `database.sqlite-shm`). Pokud kopíruješ jen `database.sqlite`:
+
+1. Tvé patche se ztratí — WAL na druhé straně obsahuje starší data co je přepíše.
+2. Po několika nesynchronizovaných patchích DB **zkorumpuje** (`database disk image is malformed`).
+
+Pokud opravdu musíš patchovat DB (nedoporučeno), tak:
+
+```bash
+docker stop n8n
+docker exec n8n_running_helper sqlite3 /home/node/.n8n/database.sqlite "PRAGMA wal_checkpoint(TRUNCATE);"
+# nebo PRAGMA journal_mode=DELETE; VACUUM;
+rm /home/node/.n8n/database.sqlite-wal /home/node/.n8n/database.sqlite-shm
+# pak patch
+docker start n8n
+```
+
+**Bezpečnější varianta:** edituj v UI (`https://your-n8n/`), nebo používej výhradně `n8n import:workflow` + `n8n publish:workflow`.
+
+#### Tipy pro debug nespouštějícího se nodu
+
+Když HTTP node v řetězci tiše selže (workflow běží, předchozí nody OK, ale tenhle se neprovede):
+
+1. Otevři node v UI a klikni **Execute step** — uvidíš error message v real-time.
+2. Zkontroluj v UI **Executions** tabu poslední běh — červené nody mají detail chyby.
+3. Ověř export přes CLI:
+   ```bash
+   docker exec n8n n8n export:workflow --id=<id> --output=/tmp/x.json
+   docker cp n8n:/tmp/x.json /tmp/x.json
+   ```
+   Pokud `jsonBody` má `=` prefix (`"={\"worker_id\":...}"`), n8n to evaluuje jako JS expression a může to selhat. Bez prefixu je to literal string.
+4. **NEpoužívej** přímý sqlite patch (viz výše) — runtime cachuje starou verzi.
 
 ---
 
