@@ -1,0 +1,1007 @@
+openapi: 3.1.0
+info:
+  title: Freelo Webhooks
+  description: |
+    Webhook specification for [Freelo.io](https://www.freelo.io) - Project Management Tool.
+
+    This document describes two sides of one feature:
+
+    1. The REST endpoints (under `paths`) a client calls on `https://api.freelo.io/v1/` to
+       **register or delete** a webhook subscription — same authentication and base URL as the
+       rest of the [public Freelo API](https://www.freelo.io/api).
+    2. The HTTP `POST` requests Freelo itself sends (under `webhooks`) to the subscriber's
+       receiver URL whenever a matching domain event occurs.
+
+    ## Resources
+    - User-facing help:
+      [Česky](https://www.freelo.io/cs/napoveda/webhooky) ·
+      [English](https://www.freelo.io/en/help/webhooks?noredirect=1)
+    - Graphical management of your webhook subscriptions:
+      [app.freelo.io/settings/webhooks](https://app.freelo.io/settings/webhooks)
+
+    ## Request Format
+    Management requests point to URL that begins with `https://api.freelo.io/v1/`.
+    Each request must include a `User-Agent` HTTP header.
+
+    ```bash
+    curl -u your@email.tld:API_KEY -H 'User-Agent: Your_App_Id (email@company.tld)' \
+        -H 'Content-Type: application/json' \
+        -d '{"webhook":{"event_types":["task_created"],"projects_ids":[],"url":"https://receiver.example.com/hook"}}' \
+        https://api.freelo.io/v1/webhooks
+    ```
+
+    ## Response Format
+    The API only supports JSON format in UTF-8 encoding.
+
+    ## Authentication
+    Authentication is done using HTTP Basic Authentication. Use your email as username and
+    API key as password. You can find the API key in
+    [settings](https://app.freelo.io/profil/nastaveni).
+
+    ## Delivery
+    Webhook deliveries use HTTP `POST` with `Content-Type: application/json` and
+    `User-Agent: Freelo webhook`.
+
+    - Connect, per-read and total timeout: **10 seconds** each.
+    - A response with status in `2xx` is treated as success; anything else (including
+      timeouts) is a failure.
+
+    ### Delivery guarantees
+    - **At-least-once.** Because of retries (see below), the same event can be
+      delivered more than once. Expect duplicates if your receiver responds slowly
+      (> 10 s) or intermittently.
+    - **No built-in `event_id` — deduplicate yourself.** Envelopes carry `type`,
+      `created_at` and `data` but no dedicated delivery id. Use the tuple
+      (`type`, `created_at`, `data.id`) as a dedupe key if your handler is not
+      idempotent.
+    - **Ordering is not guaranteed.** Retries, concurrent workers and exponential
+      backoff mean events can arrive out of order (for example `task_edited` before
+      the corresponding `task_created`). Do not rely on the receive order; where
+      order matters, reconcile by `created_at` or re-read the entity from the
+      public API.
+
+    ## Retry policy
+    The initial delivery is sent synchronously. If it fails, the call is queued and
+    retried on an exponential schedule spanning roughly 300 minutes. A subscription
+    is allowed **up to 10 delivery attempts in total** (one initial synchronous send
+    plus up to 9 queued retries); once that cap is reached the webhook is
+    automatically disabled. Only the HTTP status class is inspected — any non-`2xx`
+    response counts as a single failure and is retried.
+
+    Once a webhook is automatically disabled, it can be re-enabled only from the
+    Freelo UI at
+    [app.freelo.io/settings/webhooks](https://app.freelo.io/settings/webhooks) —
+    there is no dedicated API endpoint for re-activation.
+
+    ## Security
+    Freelo **does not sign webhook payloads** — deliveries carry no HMAC header,
+    no shared secret and no cryptographic signature. The `User-Agent: Freelo webhook`
+    header is trivially forgeable and must not be used as a proof of authenticity.
+
+    The recommended way to verify that a request really came from Freelo is to
+    **treat the receiver URL itself as a capability** — register a path containing
+    a long, unguessable random secret, e.g.:
+
+    ```
+    https://my-app.example.com/hooks/freelo/a7e1f3c8-9b4d-4e2a-88e7-2f5c9d0b6714
+    ```
+
+    Any request hitting a URL nobody else could guess is, for practical purposes,
+    from Freelo. Keep such URLs out of logs, public repositories and browser
+    history.
+
+    ## Timestamps
+    All date-time fields (`created_at`, `date_add`, `due_date`, …) are serialized
+    in **ISO 8601 / RFC 3339 / ATOM** format including a numeric timezone offset
+    (e.g. `2026-04-24T15:30:00+02:00`). **Values are not normalized to UTC** — the
+    offset reflects the producing server's timezone. Parse with a timezone-aware
+    parser.
+
+  version: "1.0.0"
+  contact:
+    name: Freelo Support
+    url: https://www.freelo.io
+
+servers:
+  - url: "https://api.freelo.io/v1"
+    description: "Production server"
+
+security:
+  - basicAuth: []
+
+tags:
+  - name: Webhooks
+    description: Webhook subscription management
+
+paths:
+  /webhooks:
+    post:
+      tags:
+        - Webhooks
+      summary: Register a webhook
+      description: |
+        Creates a new webhook subscription for the authenticated user.
+
+        **Behavior notes:**
+        - `url` must start with `https://` — HTTP URLs are rejected with a 400.
+        - `url` length is capped at 8000 characters.
+        - `event_types` accepts any of the 11 subscription names listed in the top-level
+          subscription table; at least one is required.
+        - `projects_ids` scopes the subscription to specific projects; an empty array is
+          accepted by the validator, but the subscription then only fires for user-scoped
+          events (currently `workreport` only).
+        - If `uuid` is omitted the server generates a v4 UUID and returns it; supplying
+          your own UUID makes the create call idempotent on the client side.
+      operationId: createWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookCreateRequest'
+      responses:
+        '200':
+          description: Webhook created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookCreateResponse'
+        '400':
+          description: Invalid request body (non-HTTPS URL, unknown event type, malformed UUID, URL too long)
+        '401':
+          description: Invalid or missing credentials
+
+  /webhook/{uuid}:
+    delete:
+      tags:
+        - Webhooks
+      summary: Delete a webhook
+      description: |
+        Permanently removes a webhook subscription owned by the authenticated user.
+
+      operationId: deleteWebhook
+      parameters:
+        - name: uuid
+          in: path
+          required: true
+          description: UUID of the webhook subscription
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Webhook deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          description: Invalid or missing credentials
+        '404':
+          description: Webhook not found (unknown UUID or not owned by the caller)
+
+webhooks:
+  # ==================== TASK EVENTS ====================
+  task_created:
+    post:
+      tags:
+        - Webhooks
+      summary: Task was created
+      description: Dispatched after a new task is persisted in an active, non-example project.
+      operationId: onTaskCreated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskCreatedEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+  task_edited:
+    post:
+      tags:
+        - Webhooks
+      summary: Task attributes were edited
+      description: |
+        Dispatched when any of the tracked task attributes change: `name`, `due_date`,
+        `due_date_end`, `worker`, `priority_enum`, `tasklist`, a custom field value,
+        the total time estimate, or any per-user time estimate.
+      operationId: onTaskEdited
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskEditedEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+  task_finished:
+    post:
+      tags:
+        - Webhooks
+      summary: Task was finished
+      description: Dispatched when a task transitions into the finished state.
+      operationId: onTaskFinished
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskFinishedEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+  task_deleted:
+    post:
+      tags:
+        - Webhooks
+      summary: Task was deleted
+      description: Dispatched when a task transitions into the deleted state.
+      operationId: onTaskDeleted
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskDeletedEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+  task_undeleted:
+    post:
+      tags:
+        - Webhooks
+      summary: Task was restored from deleted
+      description: Dispatched when a task transitions from deleted back to active.
+      operationId: onTaskUndeleted
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskUndeletedEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+  task_activated:
+    post:
+      tags:
+        - Webhooks
+      summary: Task was re-activated from finished
+      description: Dispatched when a task transitions from finished back to active.
+      operationId: onTaskActivated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskActivatedEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+  task_moved:
+    post:
+      tags:
+        - Webhooks
+      summary: Task was moved between tasklists or projects
+      description: |
+        Dispatched when a task is moved between tasklists (possibly across projects).
+        The envelope carries the task's new location under `data.tasklist` / `data.project`
+        and the move-specific `data.source` / `data.target` objects describing the before/after.
+      operationId: onTaskMoved
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskMovedEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+  # ==================== TASKLIST EVENTS ====================
+  tasklist:
+    post:
+      tags:
+        - Webhooks
+      summary: Tasklist lifecycle event
+      description: |
+        A single subscription covering the full tasklist lifecycle. The specific sub-event
+        is carried in the payload's `type` field:
+
+        - `tasklist_created` — new tasklist was persisted.
+        - `tasklist_edited` — tasklist `name` changed (only renames trigger this).
+        - `tasklist_deleted` — tasklist transitioned to the deleted state.
+        - `tasklist_archived` — tasklist transitioned to the finished state.
+      operationId: onTasklistEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TasklistEventEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+  # ==================== COMMENT EVENTS ====================
+  comment:
+    post:
+      tags:
+        - Webhooks
+      summary: Comment lifecycle event
+      description: |
+        A single subscription covering the full comment lifecycle. Dispatched for comments
+        on both tasks and documents (notes); the `data` object differs between the two.
+
+        - `comment_created` — new comment was persisted.
+        - `comment_edited` — comment `content` changed.
+        - `comment_deleted` — comment was removed.
+      operationId: onCommentEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentEventEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+  # ==================== NOTE (DOCUMENT) EVENTS ====================
+  note:
+    post:
+      tags:
+        - Webhooks
+      summary: Document (note) lifecycle event
+      description: |
+        A single subscription covering the document/note lifecycle. Subscription name is
+        `note` for historical reasons; the payload `type` values use `document_*`.
+
+        - `document_created` — new document was persisted.
+        - `document_edited` — document `name` or `content` changed.
+        - `document_deleted` — document transitioned to the deleted state.
+      operationId: onNoteEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentEventEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+  # ==================== WORK REPORT EVENTS ====================
+  workreport:
+    post:
+      tags:
+        - Webhooks
+      summary: Work report lifecycle event
+      description: |
+        A single subscription covering the work report lifecycle.
+
+        - `workreport_created` — new work report was logged.
+        - `workreport_edited` — `date_reported`, `minutes`, `cost`, `budget` or `task` changed.
+          Note: a change to `budget` **triggers** the event but `budget` itself is **not**
+          included in the payload (only `cost` is serialized).
+        - `workreport_deleted` — work report was removed.
+      operationId: onWorkReportEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkReportEventEnvelope'
+      responses:
+        '200':
+          description: Event accepted
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: Use your email as username and API key as password
+
+  schemas:
+    # ==================== MANAGEMENT API ====================
+    WebhookCreateRequest:
+      type: object
+      required:
+        - webhook
+      properties:
+        webhook:
+          type: object
+          required:
+            - event_types
+            - projects_ids
+            - url
+          properties:
+            uuid:
+              type: string
+              format: uuid
+              description: |
+                Optional client-supplied UUID. If omitted, the server generates a v4 UUID
+                and returns it in the response.
+            event_types:
+              type: array
+              minItems: 1
+              items:
+                type: string
+                enum:
+                  - task_created
+                  - task_edited
+                  - task_finished
+                  - task_deleted
+                  - task_undeleted
+                  - task_activated
+                  - task_moved
+                  - tasklist
+                  - comment
+                  - note
+                  - workreport
+                example: task_created
+              description: One or more subscription names (enum above).
+            projects_ids:
+              type: array
+              items:
+                type: integer
+                minimum: 1
+              description: Project IDs the webhook is scoped to.
+            url:
+              type: string
+              format: uri
+              maxLength: 8000
+              description: HTTPS receiver URL. Must start with `https://`.
+      example:
+        webhook:
+          uuid: 550e8400-e29b-41d4-a716-446655440000
+          event_types:
+            - task_created
+            - task_finished
+            - comment
+          projects_ids:
+            - 42
+            - 57
+          url: https://my-app.example.com/hooks/freelo
+
+    WebhookCreateResponse:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          description: UUID of the newly created webhook — use it to delete the subscription later.
+
+    SuccessResponse:
+      type: object
+      properties:
+        result:
+          type: string
+          example: success
+
+    # ==================== SHARED PRIMITIVES ====================
+    State:
+      type: object
+      properties:
+        id:
+          type: integer
+        state:
+          type: string
+          enum: [active, archived, finished, deleted, template]
+          example: active
+          description: |
+            Lifecycle state of the entity.
+            `template` is used only for project/tasklist templates and never appears in webhook payloads.
+
+    UserBasic:
+      type: object
+      properties:
+        id:
+          type: integer
+        fullname:
+          type: string
+
+    IdName:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+
+    IdNameState:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        state:
+          $ref: '#/components/schemas/State'
+
+    Money:
+      type: object
+      properties:
+        amount:
+          type: string
+          description: |
+            Amount as a decimal string multiplied by 100 (same convention as the rest
+            of the Freelo public API — e.g. `"100025"` for 1,000.25).
+        currency:
+          type: string
+          description: |
+            ISO 4217 currency code (`CZK`, `EUR`, `USD`) or the sentinel `UNKNOWN` emitted
+            when the work report is not bound to a project (standalone entry).
+          example: CZK
+
+    CustomFieldValue:
+      type: object
+      description: |
+        Single custom-field value attached to a task. Shape depends on the custom field
+        type (text, number, select, …); receivers should accept additional keys.
+      additionalProperties: true
+
+    # ==================== EVENT ENVELOPES ====================
+    # Concrete envelopes extend EventEnvelopeBase via allOf, narrowing `type` to the
+    # specific event identifier(s) and `data` to the matching payload schema.
+    EventEnvelopeBase:
+      type: object
+      description: Common envelope fields shared by every webhook payload.
+      required:
+        - type
+        - created_at
+        - author
+        - data
+      properties:
+        type:
+          type: string
+          description: Event identifier — see each subscription for the set of possible values.
+        created_at:
+          type: string
+          format: date-time
+          description: |
+            ISO 8601 / ATOM timestamp at which the event was produced, including a
+            numeric timezone offset. Not normalized to UTC — see the Timestamps
+            section in the top-level description.
+        author:
+          oneOf:
+            - $ref: '#/components/schemas/UserBasic'
+            - type: 'null'
+          description: |
+            Verified user who triggered the event, or `null` when the change was made by an
+            unauthenticated actor (e.g. system job, migration).
+        data:
+          type: object
+          description: Event-specific payload.
+
+    # ==================== TASK PAYLOADS ====================
+    TaskPayload:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        priority_enum:
+          type: string
+          enum: [h, m, l]
+          nullable: true
+          example: h
+          description: Priority — `h` = high, `m` = medium, `l` = low. `null` when no priority is set.
+        due_date:
+          type: string
+          format: date-time
+          nullable: true
+        due_date_end:
+          type: string
+          format: date-time
+          nullable: true
+        date_add:
+          type: string
+          format: date-time
+        author:
+          $ref: '#/components/schemas/UserBasic'
+        worker:
+          oneOf:
+            - $ref: '#/components/schemas/UserBasic'
+            - type: 'null'
+        tasklist:
+          $ref: '#/components/schemas/IdNameState'
+        project:
+          $ref: '#/components/schemas/IdNameState'
+        state:
+          $ref: '#/components/schemas/State'
+        parent_task_id:
+          type: integer
+          nullable: true
+          description: Parent task ID if the task is a smart tasklist-check child; otherwise `null`.
+        labels:
+          type: array
+          items:
+            type: string
+          description: Task label names.
+        custom_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomFieldValue'
+        total_time_estimate:
+          oneOf:
+            - type: object
+              required: [minutes]
+              properties:
+                minutes:
+                  type: integer
+                  description: Total time estimate for the task, in minutes.
+            - type: 'null'
+          description: |
+            Aggregate time estimate for the task. `null` when no total estimate is set.
+            Mutating this estimate triggers `task_edited`.
+        users_time_estimates:
+          type: array
+          description: |
+            Per-user time estimates attached to the task (always present, possibly empty).
+            Mutating any entry triggers `task_edited`.
+          items:
+            type: object
+            required: [minutes, user]
+            properties:
+              minutes:
+                type: integer
+                description: Estimated minutes for this user.
+              user:
+                $ref: '#/components/schemas/UserBasic'
+        multi_project_task:
+          $ref: '#/components/schemas/MultiProjectTask'
+
+    MultiProjectTask:
+      type: object
+      description: |
+        Added to every task-event payload by the webhook dispatcher (per-subscriber
+        ACL-filtered). For regular tasks `is_multi_project` is `false` and `assigned_to`
+        contains a single entry mirroring the task's own project/tasklist. For tasks
+        assigned to multiple projects (UVVP) `is_multi_project` is `true` and
+        `assigned_to` lists every project/tasklist combination the subscriber has
+        access to.
+      properties:
+        is_multi_project:
+          type: boolean
+        assigned_to:
+          type: array
+          items:
+            type: object
+            properties:
+              project:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                    nullable: true
+                    description: Project name; `null` for projects without a display name.
+              tasklist:
+                $ref: '#/components/schemas/IdName'
+
+    TaskCreatedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              const: task_created
+            data:
+              $ref: '#/components/schemas/TaskPayload'
+
+    TaskEditedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              const: task_edited
+            data:
+              $ref: '#/components/schemas/TaskPayload'
+
+    TaskFinishedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              const: task_finished
+            data:
+              $ref: '#/components/schemas/TaskPayload'
+
+    TaskDeletedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              const: task_deleted
+            data:
+              $ref: '#/components/schemas/TaskPayload'
+
+    TaskUndeletedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              const: task_undeleted
+            data:
+              $ref: '#/components/schemas/TaskPayload'
+
+    TaskActivatedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              const: task_activated
+            data:
+              $ref: '#/components/schemas/TaskPayload'
+
+    TaskMoveLocationProject:
+      type: object
+      description: |
+        Project identity in a task-move `source`/`target` block. Both fields are nullable:
+        `id` is untyped-nullable in the domain model, and `name` is `null` for projects
+        without a display name.
+      properties:
+        id:
+          type: integer
+          nullable: true
+        name:
+          type: string
+          nullable: true
+
+    TaskMoveLocationTasklist:
+      type: object
+      description: |
+        Tasklist identity in a task-move `source`/`target` block. `id` is nullable in the
+        domain model; `name` is always present.
+      properties:
+        id:
+          type: integer
+          nullable: true
+        name:
+          type: string
+
+    TaskMovedPayload:
+      allOf:
+        - $ref: '#/components/schemas/TaskPayload'
+        - type: object
+          properties:
+            source:
+              type: object
+              description: Location the task was moved **from**.
+              properties:
+                project:
+                  $ref: '#/components/schemas/TaskMoveLocationProject'
+                tasklist:
+                  $ref: '#/components/schemas/TaskMoveLocationTasklist'
+            target:
+              type: object
+              description: Location the task was moved **to**.
+              properties:
+                project:
+                  $ref: '#/components/schemas/TaskMoveLocationProject'
+                tasklist:
+                  $ref: '#/components/schemas/TaskMoveLocationTasklist'
+
+    TaskMovedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              const: task_moved
+            data:
+              $ref: '#/components/schemas/TaskMovedPayload'
+
+    # ==================== TASKLIST PAYLOADS ====================
+    TasklistPayload:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        project:
+          $ref: '#/components/schemas/IdNameState'
+        state:
+          $ref: '#/components/schemas/State'
+
+    TasklistEventEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - tasklist_created
+                - tasklist_edited
+                - tasklist_deleted
+                - tasklist_archived
+              example: tasklist_created
+            data:
+              $ref: '#/components/schemas/TasklistPayload'
+
+    # ==================== COMMENT PAYLOADS ====================
+    TaskCommentPayload:
+      type: object
+      description: Emitted when the commented entity is a task.
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+          description: HTML body of the comment.
+        date_add:
+          type: string
+          format: date-time
+        author:
+          $ref: '#/components/schemas/UserBasic'
+        project:
+          $ref: '#/components/schemas/IdName'
+        tasklist:
+          $ref: '#/components/schemas/IdNameState'
+        task:
+          allOf:
+            - $ref: '#/components/schemas/IdNameState'
+            - type: object
+              properties:
+                labels:
+                  type: array
+                  items:
+                    type: string
+                  description: Names of labels attached to the task. Always present (possibly empty).
+
+    DocumentCommentPayload:
+      type: object
+      description: |
+        Emitted when the commented entity is a document (note). Note the key is `note`,
+        not `document`.
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+          description: HTML body of the comment.
+        date_add:
+          type: string
+          format: date-time
+        author:
+          $ref: '#/components/schemas/UserBasic'
+        project:
+          $ref: '#/components/schemas/IdName'
+        note:
+          $ref: '#/components/schemas/IdNameState'
+
+    CommentEventEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - comment_created
+                - comment_edited
+                - comment_deleted
+              example: comment_created
+            data:
+              oneOf:
+                - $ref: '#/components/schemas/TaskCommentPayload'
+                - $ref: '#/components/schemas/DocumentCommentPayload'
+
+    # ==================== DOCUMENT PAYLOADS ====================
+    DocumentPayload:
+      type: object
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+          nullable: true
+          description: HTML body of the document. `null` when the document was created without initial content.
+        name:
+          type: string
+        date_add:
+          type: string
+          format: date-time
+        author:
+          $ref: '#/components/schemas/UserBasic'
+        project:
+          $ref: '#/components/schemas/IdNameState'
+        state:
+          $ref: '#/components/schemas/State'
+
+    DocumentEventEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - document_created
+                - document_edited
+                - document_deleted
+              example: document_created
+            data:
+              $ref: '#/components/schemas/DocumentPayload'
+
+    # ==================== WORK REPORT PAYLOADS ====================
+    WorkReportPayload:
+      type: object
+      description: |
+        `project`, `tasklist` and `task` are all `null` for **standalone** work reports
+        that were logged without being attached to a task. In that case `cost.currency`
+        is the sentinel `UNKNOWN`.
+      properties:
+        id:
+          type: integer
+        date_add:
+          type: string
+          format: date-time
+        date_reported:
+          type: string
+          format: date-time
+        minutes:
+          type: integer
+          description: Logged duration in minutes.
+        cost:
+          $ref: '#/components/schemas/Money'
+        note:
+          type: string
+          nullable: true
+        author:
+          $ref: '#/components/schemas/UserBasic'
+        project:
+          oneOf:
+            - $ref: '#/components/schemas/IdNameState'
+            - type: 'null'
+        tasklist:
+          oneOf:
+            - $ref: '#/components/schemas/IdNameState'
+            - type: 'null'
+        task:
+          oneOf:
+            - allOf:
+                - $ref: '#/components/schemas/IdNameState'
+                - type: object
+                  properties:
+                    labels:
+                      type: array
+                      items:
+                        type: string
+                      description: Names of labels attached to the task. Present (possibly empty) when the work report is attached to a task.
+            - type: 'null'
+
+    WorkReportEventEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/EventEnvelopeBase'
+        - type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - workreport_created
+                - workreport_edited
+                - workreport_deleted
+              example: workreport_created
+            data:
+              $ref: '#/components/schemas/WorkReportPayload'
