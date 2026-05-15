@@ -456,8 +456,34 @@ Když HTTP node v řetězci tiše selže (workflow běží, předchozí nody OK,
    docker exec n8n n8n export:workflow --id=<id> --output=/tmp/x.json
    docker cp n8n:/tmp/x.json /tmp/x.json
    ```
-   Pokud `jsonBody` má `=` prefix (`"={\"worker_id\":...}"`), n8n to evaluuje jako JS expression a může to selhat. Bez prefixu je to literal string.
 4. **NEpoužívej** přímý sqlite patch (viz výše) — runtime cachuje starou verzi.
+
+#### jsonBody s integery — KRITICKÉ (Freelo: `worker must be int`)
+
+Když Freelo endpoint vyžaduje integer (např. `worker` v `POST /task/{id}`), n8n musí poslat skutečný JSON integer, ne string. Jednotlivé formy `jsonBody`:
+
+| Hodnota `jsonBody` | Co n8n pošle | Funguje pro Freelo? |
+|---|---|---|
+| `'{"worker": 27451}'` (literal) | `"{\"worker\": 27451}"` — STRING jako body, ne JSON | **NE** (Freelo whitelist `array_intersect_key` ho silently ignoruje) |
+| `'={"worker_id": 27451}'` (`=` prefix bez `{{ }}`) | totéž — string | **NE** |
+| `'={{ JSON.stringify({worker: 27451}) }}'` | string `{"worker":27451}` | **NE** (totéž) |
+| **`'={{ ({"worker": 27451}) }}'`** ← s ENCLOSED parens | **objekt** → n8n serializuje s integery | ✅ **ANO** |
+| `bodyParameters` keypair | `{"worker": "27451"}` — STRING value | **NE** (`400 - worker must be int`) |
+
+Závorky kolem `({...})` jsou nutné — bez nich JS parser interpretuje `{worker: 27451}` jako blok statement (ne object literal) a expression vrací undefined.
+
+Příklad správného nastavení v workflow JSON:
+```json
+{
+  "method": "POST",
+  "url": "={{ 'https://api.freelo.io/v1/task/' + $('Uložit Task ID').first().json.mainTaskId }}",
+  "authentication": "genericCredentialType",
+  "genericAuthType": "httpBasicAuth",
+  "sendBody": true,
+  "specifyBody": "json",
+  "jsonBody": "={{ ({\"worker\": 27451}) }}"
+}
+```
 
 ---
 
