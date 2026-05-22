@@ -21,7 +21,7 @@ The `-g` flag installs the skill globally (available across all projects).
 | [iot-dehumidification](./iot-dehumidification/) | Expertní řízení vysoušení přes IoT s vazbou na FVE predikci | `npx skills add https://github.com/lvacek2026/skills --skill iot-dehumidification -g` |
 | [n8n-slack-expert](./n8n-slack-expert/) | Stabilní integrace n8n + Slack – timeouty, idempotence, routing | `npx skills add https://github.com/lvacek2026/skills --skill n8n-slack-expert -g` |
 | [grafana-energy-viz](./grafana-energy-viz/) | Návrh energetických dashboardů v Grafaně – Canvas Panel, Sankey, Solar Flow, animace toků (Tesla/Victron styl bez Enterprise) | `npx skills add https://github.com/lvacek2026/skills --skill grafana-energy-viz -g` |
-| [positrex-api](./positrex-api/) | REST API Positrex – GPS sledování vozidel, kniha jízd, polohy, vozidla; autentizace api_key + Bearer token | `npx skills add https://github.com/lvacek2026/skills --skill positrex-api -g` |
+| [positrex-api](./positrex-api/) | REST API Positrex – GPS sledování vozidel, kniha jízd, polohy, vozidla; autentizace HTTP Basic + X-Ptx-Key | `npx skills add https://github.com/lvacek2026/skills --skill positrex-api -g` |
 
 ## Repository Structure
 

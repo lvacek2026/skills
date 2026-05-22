@@ -1,136 +1,65 @@
 # Positrex API — referenční seznam endpointů
 
-Odvozeno z oficiální mobilní appky Positrex **v3.10.4** (Flutter, balíček
-`systems.level.positrex`). HTTP metody jsou většinou **odhadnuté** dle REST
-konvencí — přesné metody, parametry a schémata ověř proti `/v3/api-docs`
-(staženo s platným Bearer tokenem).
+Odvozeno z veřejné OpenAPI spec **`https://api2.positrex.eu/v3/api-docs/1-public`**
+(OpenAPI 3.0.1). Pro přesná schémata, příklady a další skupiny (`2-full`,
+`3-unit-control`) stáhni spec přímo.
 
-- Base URL: `https://api2.positrex.eu` (test: `https://testapi.positrex.eu`)
-- Hlavička: `Authorization: Bearer <token>` u všech `/mobile/...`
-- `{clientId}`, `{unitId}`, `{tripId}` = cesty parametry (v appce placeholdery `%|n%`)
-- Query parametry viděné v appce: `clientId`, `unitId`, `tripId`, `limit`, `offset`, `from`, `to`
+- Base URL: `https://api2.positrex.eu`
+- Každý request: **HTTP Basic auth** + hlavička **`X-Ptx-Key: <klíč>`**
+- Časové údaje: UNIX timestamp v **milisekundách**
+- `{id}` / `{clientId}` = cesty parametry
 
-## Autentizace
+## Veřejné API (`1-public`)
 
-| Metoda | Cesta | Popis |
+| Metoda | Cesta | Parametry (query) | Popis |
+|---|---|---|---|
+| GET | `/mobile/user` | — | Přihlášený uživatel (`ApiUser`). |
+| GET | `/mobile/user/roles/client/{clientId}` | — | Role uživatele u klienta. |
+| GET | `/mobile/user/roles/unit/{id}` | — | Role uživatele u vozidla. |
+| GET | `/mobile/client` | — | Klienti (firmy) přihlášeného uživatele. |
+| GET | `/mobile/client/{clientId}/unit` | — | Vozidla klienta s aktuálními informacemi. |
+| GET | `/mobile/unit/{id}` | — | Informace o vozidle. |
+| GET | `/mobile/unit/{id}/positions` | — | Aktuální polohy vozidla. |
+| GET | `/mobile/unit/{id}/logbook` | `date` (YYYY-MM-DD), `tps` (bool) | Kniha jízd za jeden den. |
+| GET | `/mobile/unit/{id}/logbook-range` | `from`, `to` (YYYY-MM-DD), `tps` (bool) | Kniha jízd za rozsah — **max 7 dní**. |
+| GET | `/mobile/unit/{id}/incidents` | — | Incidenty vozidla. |
+| GET | `/mobile/unit/{id}/analogue-value` | rozsah — **max 31 dní** | Souhrn analogových hodnot vozidla. |
+| GET | `/mobile/unit/{id}/speed` | rozsah — **max 31 dní** | Graf rychlosti vozidla. |
+
+`tps=true` u logbook endpointů naplní u každé jízdy pole `tps` (GeoJSON
+FeatureCollection s body trasy — `Point` geometrie, `coordinates` `[lon,lat]`).
+
+## Schémata (`components/schemas` v `1-public`)
+
+`ApiClient`, `ApiCoordinates`, `ApiIncident`, `ApiSummary`, `ApiSummaryPosition`,
+`ApiTrip`, `ApiUser`, `Bounds`, `DataSet`, `DataValueDoc`, `Feature`,
+`FeatureCollection`, `GeoJsonObject`, `Gps`, `LineString`, `LngLatAlt`,
+`MultiLineString`, `MultiPoint`, `MultiPolygon`, `Point`, `Polygon`, `SelectItem`.
+
+### `ApiTrip` (jízda v knize jízd)
+
+| Pole | Typ | Význam |
 |---|---|---|
-| POST | `/login` *(k ověření)* | Přihlášení: `LoginCredentials` (username, password) + `api_key` → Bearer token. Přesnou cestu/tělo ověř — kandidát i `/authenticate`. |
-| GET | `/v3/api-docs` | OpenAPI 3 spec — **vyžaduje Bearer token** (jinak 401). |
+| `id` | integer | ID jízdy |
+| `from` / `to` | integer (ms) | začátek / konec |
+| `distance` | number | vzdálenost (km) |
+| `beginAddress` / `endAddress` | string | adresa odkud / kam |
+| `beginOdometer` / `endOdometer` | number | tachometr na začátku / konci |
+| `maxSpeed` | integer | max. rychlost (km/h) |
+| `tripType` | string | `business` / `private` |
+| `driverName` / `driverId` | string / integer | řidič |
+| `tps` | FeatureCollection | trasa (jen při `tps=true`) |
+| `dayOfStart` | integer (ms) | den začátku |
 
-## Uživatel (User)
+### unit (vozidlo, z `/mobile/client/{id}/unit`)
 
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET | `/mobile/user` | Aktuálně přihlášený uživatel. |
-| POST | `/mobile/user/change-password` | Změna hesla. |
-| POST | `/mobile/user/reset-password` | Reset hesla. |
-| DELETE | `/mobile/user/delete-account` | Smazání účtu. |
-| GET | `/mobile/user/roles/client/{clientId}` | Role uživatele vůči klientovi. |
-| GET | `/mobile/user/roles/unit/{unitId}` | Role uživatele vůči vozidlu. |
+`unitId`, `id`, `name`, `registrationPlate`, `objectType`, `objectTypeId`,
+`color`, `driverId`, `driverName`, `odometer`, `motoHours`, `lastComm` (ms),
+`lastTripType`, `customerId`, `msisdn`, a `lastPosition`:
+`{ lat, lon, speed, course, address, lastTp (ms), ioOn, type, accuracy }`.
 
-## Klient (Client)
+## Skupiny mimo veřejné API
 
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET | `/mobile/client` | Klienti přihlášeného uživatele. |
-| GET | `/mobile/client/{clientId}/driver` | Řidiči klienta. |
-| GET | `/mobile/client/{clientId}/geozone` | Geozóny klienta. |
-| GET | `/mobile/client/{clientId}/invitation` | Pozvánky. |
-| GET | `/mobile/client/{clientId}/link-to-position` | Sdílené odkazy na polohu. |
-| GET | `/mobile/client/{clientId}/unconfirmed-contracts` | Nepotvrzené smlouvy. |
-| POST | `/mobile/client/confirm-contracts/{id}` | Potvrzení smluv. |
-| POST | `/mobile/client/{clientId}/add-unit/{code}` | Přidání vozidla podle kódu. |
-| POST | `/mobile/client/{clientId}/add-unit/{code}/complete-client` | Přidání vozidla + dokončení klienta. |
-
-## Vozidla (Unit)
-
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET | `/mobile/v1/client/{clientId}/unit` | **Seznam vozidel klienta.** |
-| GET | `/mobile/unit/{unitId}` | Vozidlo. |
-| GET | `/mobile/v1/unit/{unitId}/detail` | **Detail vozidla.** |
-| POST | `/mobile/unit/{unitId}/update` | Úprava vozidla (`UnitEditData`). |
-| GET | `/mobile/unit/{unitId}/positions` | **GPS polohy vozidla.** |
-| GET | `/mobile/unit/{unitId}/logbook` | Kniha jízd vozidla. |
-| GET | `/mobile/v1/unit/{unitId}/logbook` | Kniha jízd (v1). |
-| GET | `/mobile/v1/unit/{unitId}/logbook-range` | **Kniha jízd za období** (`from`, `to`). |
-| GET | `/mobile/unit/{unitId}/available-profiles` | Dostupné profily jízd. |
-| POST | `/mobile/unit/{unitId}/request-profile-change` | Žádost o změnu profilu. |
-| GET | `/mobile/unit/{unitId}/tank-fullness` | Stav nádrže. |
-| GET | `/mobile/unit/{unitId}/analogue-value-order` | Pořadí analogových hodnot. |
-| POST | `/mobile/unit/{unitId}/analogue-value-set` | Nastavení analogových hodnot. |
-| GET | `/mobile/unit/{unitId}/file` | Soubory vozidla. |
-| GET | `/mobile/unit/{unitId}/file/{fileId}` | Konkrétní soubor. |
-| GET | `/mobile/unit/{unitId}/expenses` | Náklady vozidla. |
-| GET | `/mobile/unit/{unitId}/expenses/sum` | Součet nákladů. |
-| GET | `/mobile/unit/{unitId}/fuelling` | Tankování vozidla. |
-
-## Jízdy (Trip)
-
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET | `/mobile/trip/{tripId}` | Detail jedné jízdy (čas, trasa, řidič, km). |
-
-## Náklady a tankování
-
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET/POST | `/mobile/fuelling` | Tankování. |
-| GET/POST | `/mobile/other-expenses` | Ostatní náklady. |
-
-## Korekce tachometru (odometer)
-
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET | `/mobile/correctionOfOdometer/unit/{unitId}` | Korekce tachometru vozidla. |
-| GET | `/mobile/correctionOfOdometer/unit/{unitId}/check` | Kontrola korekce. |
-| GET | `/mobile/correctionOfOdometer/unit/{unitId}/list` | Seznam korekcí. |
-
-## Geozóny a incidenty
-
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET | `/mobile/geozone` | Geozóny. |
-| GET | `/mobile/incident` | Incidenty. |
-| POST | `/mobile/incident/approve` | Schválení incidentu. |
-| POST | `/mobile/incident/approve/unit` | Schválení incidentu pro vozidlo. |
-| GET | `/mobile/watch-dog/{id}` | Watch-dog (hlídání). |
-
-## Notifikace
-
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET | `/mobile/notifications` | Notifikace. |
-| GET | `/mobile/notifications/list` | Seznam notifikací. |
-| GET | `/mobile/notifications/enabled` | Zapnuté notifikace. |
-| POST | `/mobile/notifications/set-enabled` | Zapnutí/vypnutí notifikace. |
-| POST | `/mobile/notification/register-device` | Registrace zařízení (push / FCM token). |
-| GET | `/mobile/created-notification` | Vytvořené notifikace. |
-| GET | `/mobile/created-notification/unread` | Nepřečtené. |
-| POST | `/mobile/created-notification/mark-read` | Označit jako přečtené. |
-
-## Reseller a číselníky (`/data/...`)
-
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET | `/data/reseller/info` | Informace o resellerovi. |
-| GET | `/data/reseller/link` | Odkazy resellera. |
-| GET | `/data/reseller/privacy-policy` | Zásady ochrany soukromí. |
-| GET | `/data/reseller/terms` | Obchodní podmínky. |
-| GET | `/data/localization` | Lokalizační řetězce. |
-| GET | `/data/object-types` | Typy objektů (číselník). |
-| GET | `/data/track-orders` | Track orders. |
-| GET | `/data/trip-type-variant` | Varianty typu jízdy (soukromá/služební…). |
-
-## Registrace
-
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET | `/registration/reseller/products` | Produkty resellera. |
-| POST | `/registration/register-client` | Registrace nového klienta. |
-
-## Export
-
-| Metoda | Cesta | Popis |
-|---|---|---|
-| GET | `/pdf?from=...` | PDF export (kniha jízd / report). |
+`/v3/api-docs/2-full` (plná dokumentace) a `/v3/api-docs/3-unit-control`
+(servisní / řídicí endpointy) vyžadují autentizaci — stáhni s Basic auth +
+`X-Ptx-Key`.

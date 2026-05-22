@@ -1,7 +1,7 @@
 # positrex-api
 
-Skill pro Claude Code — práce s REST API služby **Positrex** (GPS sledování
-vozidel, elektronická kniha jízd, vozový park).
+Skill pro Claude Code — práce s veřejným REST API služby **Positrex** (GPS
+sledování vozidel, elektronická kniha jízd, vozový park).
 
 ```bash
 npx skills add https://github.com/lvacek2026/skills --skill positrex-api -g
@@ -9,15 +9,13 @@ npx skills add https://github.com/lvacek2026/skills --skill positrex-api -g
 
 ## Co skill umí
 
-- Vysvětlí **autentizační model** Positrexu (`api_key` + login → Bearer token —
-  pozor, **není** to klientský certifikát).
-- Poskytne referenční **seznam endpointů** `/mobile/...` a `/data/...`
-  (`references/endpoints.md`).
-- Popíše datový model (Unit, Trip, Position, LogbookData, Client…) a typický
-  workflow integrace.
+- Vysvětlí **autentizační model** Positrexu — HTTP Basic auth + hlavička
+  `X-Ptx-Key` (není to Bearer token ani certifikát).
+- Poskytne referenční **seznam endpointů** `/mobile/...` (`references/endpoints.md`)
+  a popis datových schémat (unit, `ApiTrip`, `ApiClient`, `ApiUser`).
+- Nasměruje na **veřejnou OpenAPI spec** `/v3/api-docs/1-public`.
 
 ## Zdroj dat
 
-OpenAPI spec Positrexu je za autentizací. Endpointy v tomto skillu jsou
-odvozené z oficiální mobilní appky v3.10.4. Po prvním loginu doporučeno stáhnout
-`/v3/api-docs` s Bearer tokenem a doplnit přesná schémata.
+Veřejná OpenAPI 3.0.1 spec na `https://api2.positrex.eu/v3/api-docs/1-public`
+(bez autentizace). Skupiny `2-full` a `3-unit-control` vyžadují přihlášení.
