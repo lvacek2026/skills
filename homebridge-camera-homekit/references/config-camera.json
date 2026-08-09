@@ -1,0 +1,42 @@
+{
+    "_comment": "Šablona: přidej blok 'CameraUI' do platforms[] v config.json. Zachovej stávající 'bridge' a 'Config' bloky. Každou kameru přidej jako objekt do cameras[]. Nahraď HESLO, IP a RTSP cestu podle výrobce (Dahua: cam/realmonitor?channel=1&subtype=1, TP-Link VIGI: stream2, Hikvision: Streaming/Channels/102). Pro HomeKit vždy H.264 sub stream + vcodec copy.",
+    "name": "CameraUI",
+    "port": 8081,
+    "atHomeSwitch": false,
+    "logLevel": "info",
+    "mqtt": { "active": false, "tls": false, "port": 1883 },
+    "http": { "active": false, "port": 7272, "localhttp": false },
+    "smtp": { "active": false, "port": 2727, "space_replace": "+" },
+    "ftp": { "active": false, "useFile": false, "port": 5050 },
+    "ssl": { "active": false },
+    "options": {
+        "videoProcessor": "/usr/local/bin/ffmpeg"
+    },
+    "cameras": [
+        {
+            "name": "Kamera",
+            "manufacturer": "TP-Link",
+            "model": "VIGI",
+            "motion": true,
+            "motionTimeout": 15,
+            "unbridge": true,
+            "hsv": true,
+            "prebuffering": false,
+            "prebufferLength": 4,
+            "videoConfig": {
+                "source": "-i rtsp://admin:HESLO@192.168.x.x:554/stream2",
+                "subSource": "-i rtsp://admin:HESLO@192.168.x.x:554/stream2",
+                "stillImageSource": "-i rtsp://admin:HESLO@192.168.x.x:554/stream2",
+                "maxWidth": 848,
+                "maxHeight": 480,
+                "vcodec": "copy",
+                "acodec": "libfdk_aac",
+                "audio": true
+            },
+            "smtp": { "email": "Kamera" },
+            "videoanalysis": { "active": false },
+            "mqtt": {}
+        }
+    ],
+    "platform": "CameraUI"
+}

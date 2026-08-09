@@ -23,6 +23,7 @@ The `-g` flag installs the skill globally (available across all projects).
 | [n8n-slack-expert](./n8n-slack-expert/) | Stabilní integrace n8n + Slack – timeouty, idempotence, routing | `npx skills add https://github.com/lvacek2026/skills --skill n8n-slack-expert -g` |
 | [grafana-energy-viz](./grafana-energy-viz/) | Návrh energetických dashboardů v Grafaně – Canvas Panel, Sankey, Solar Flow, animace toků (Tesla/Victron styl bez Enterprise) | `npx skills add https://github.com/lvacek2026/skills --skill grafana-energy-viz -g` |
 | [positrex-api](./positrex-api/) | REST API Positrex – GPS sledování vozidel, kniha jízd, polohy, vozidla; autentizace HTTP Basic + X-Ptx-Key | `npx skills add https://github.com/lvacek2026/skills --skill positrex-api -g` |
+| [homebridge-camera-homekit](./homebridge-camera-homekit/) | IP kamera (Dahua/TP-Link VIGI/Hikvision) do Apple Home přes Homebridge – RTSP discovery, unbridged pairing, Node/config-ui-x upgrade v oznu image | `npx skills add https://github.com/lvacek2026/skills --skill homebridge-camera-homekit -g` |
 
 ## Repository Structure
 
@@ -45,6 +46,11 @@ skills/
 ├── homey-node-red/
 │   ├── SKILL.md
 │   └── README.md
+├── homebridge-camera-homekit/
+│   ├── SKILL.md
+│   ├── README.md
+│   └── references/
+│       └── config-camera.json
 ├── iot-dehumidification/
 │   ├── SKILL.md
 │   └── README.md
