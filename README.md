@@ -24,6 +24,7 @@ The `-g` flag installs the skill globally (available across all projects).
 | [grafana-energy-viz](./grafana-energy-viz/) | Návrh energetických dashboardů v Grafaně – Canvas Panel, Sankey, Solar Flow, animace toků (Tesla/Victron styl bez Enterprise) | `npx skills add https://github.com/lvacek2026/skills --skill grafana-energy-viz -g` |
 | [positrex-api](./positrex-api/) | REST API Positrex – GPS sledování vozidel, kniha jízd, polohy, vozidla; autentizace HTTP Basic + X-Ptx-Key | `npx skills add https://github.com/lvacek2026/skills --skill positrex-api -g` |
 | [homebridge-camera-homekit](./homebridge-camera-homekit/) | IP kamera (Dahua/TP-Link VIGI/Hikvision) do Apple Home přes Homebridge – RTSP discovery, unbridged pairing, Node/config-ui-x upgrade v oznu image | `npx skills add https://github.com/lvacek2026/skills --skill homebridge-camera-homekit -g` |
+| [zabbix-template-export](./zabbix-template-export/) | Zabbix šablony – XML/YAML podle verze (5.0–7.x), rozdíly formátu, validace před importem | `npx skills add https://github.com/lvacek2026/skills --skill zabbix-template-export -g` |
 
 ## Repository Structure
 
